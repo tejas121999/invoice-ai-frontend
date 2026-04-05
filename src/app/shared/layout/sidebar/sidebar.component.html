@@ -1,0 +1,33 @@
+<aside
+  class="flex w-56 shrink-0 flex-col gap-1 border-r border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-900"
+>
+  <a
+    routerLink="/dashboard"
+    routerLinkActive="bg-white font-medium text-slate-900 shadow-sm dark:bg-slate-800 dark:text-white"
+    [routerLinkActiveOptions]="{ exact: true }"
+    class="rounded-md px-3 py-2 text-sm text-slate-600 hover:bg-white/80 dark:text-slate-300 dark:hover:bg-slate-800/80"
+  >
+    Dashboard
+  </a>
+  <a
+    routerLink="/upload"
+    routerLinkActive="bg-white font-medium text-slate-900 shadow-sm dark:bg-slate-800 dark:text-white"
+    class="rounded-md px-3 py-2 text-sm text-slate-600 hover:bg-white/80 dark:text-slate-300 dark:hover:bg-slate-800/80"
+  >
+    Upload
+  </a>
+  <a
+    routerLink="/history"
+    routerLinkActive="bg-white font-medium text-slate-900 shadow-sm dark:bg-slate-800 dark:text-white"
+    class="rounded-md px-3 py-2 text-sm text-slate-600 hover:bg-white/80 dark:text-slate-300 dark:hover:bg-slate-800/80"
+  >
+    History
+  </a>
+  <a
+    routerLink="/review/sample-id"
+    routerLinkActive="bg-white font-medium text-slate-900 shadow-sm dark:bg-slate-800 dark:text-white"
+    class="rounded-md px-3 py-2 text-sm text-slate-600 hover:bg-white/80 dark:text-slate-300 dark:hover:bg-slate-800/80"
+  >
+    Review (sample)
+  </a>
+</aside>
