@@ -30,7 +30,7 @@ export const routes: Routes = [
       {
         path: 'history',
         loadChildren: () =>
-          import('./invoice-history/invoice-history.module').then((m) => m.InvoiceHistoryModule),
+          import('./invoice-history/index').then((m) => m.InvoiceHistoryModule),
       },
     ],
   },
