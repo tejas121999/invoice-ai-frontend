@@ -1,6 +1,6 @@
 import { Injectable, inject } from '@angular/core';
-import { Observable, catchError, of } from 'rxjs';
-import { InvoiceApiService, InvoiceUploadResponse } from '../../services/invoice-api.service';
+import { Observable } from 'rxjs';
+import { InvoiceApiService, InvoiceUploadResult } from '../../services/invoice-api.service';
 
 export interface FileValidationResult {
   readonly valid: boolean;
@@ -33,9 +33,7 @@ export class InvoiceUploadService {
     return { valid: true };
   }
 
-  upload(file: File): Observable<InvoiceUploadResponse> {
-    return this.api.uploadInvoice(file).pipe(
-      catchError(() => of({ id: 'demo-local', status: 'queued (offline demo)' })),
-    );
+  upload(file: File): Observable<InvoiceUploadResult> {
+    return this.api.uploadInvoice(file);
   }
 }

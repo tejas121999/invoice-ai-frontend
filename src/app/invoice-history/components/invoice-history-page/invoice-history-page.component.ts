@@ -1,55 +1,54 @@
-import { DecimalPipe } from '@angular/common';
+import { DatePipe } from '@angular/common';
+import { HttpErrorResponse } from '@angular/common/http';
 import { Component, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { catchError, debounceTime, distinctUntilChanged, of, Subject, switchMap } from 'rxjs';
+import {
+  catchError,
+  debounceTime,
+  distinctUntilChanged,
+  finalize,
+  of,
+  Subject,
+  switchMap,
+} from 'rxjs';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { InvoiceApiService, InvoiceSummary } from '../../../services/invoice-api.service';
+import { InvoiceApiService, InvoiceListItem } from '../../../services/invoice-api.service';
+import { InvoiceListRefreshService } from '../../../services/invoice-list-refresh.service';
 
 @Component({
   selector: 'app-invoice-history-page',
   standalone: true,
-  imports: [FormsModule, DecimalPipe],
+  imports: [FormsModule, DatePipe],
   templateUrl: './invoice-history-page.component.html',
   styleUrl: './invoice-history-page.component.css',
 })
 export class InvoiceHistoryPageComponent {
   private readonly invoiceApi = inject(InvoiceApiService);
+  private readonly listRefresh = inject(InvoiceListRefreshService);
   private readonly search$ = new Subject<string>();
 
-  protected readonly rows = signal<InvoiceSummary[]>([]);
+  protected readonly rows = signal<InvoiceListItem[]>([]);
   protected readonly query = signal('');
   protected readonly from = signal('');
   protected readonly to = signal('');
-
-  private readonly demo: InvoiceSummary[] = [
-    { id: 'inv-101', vendor: 'Acme Supplies', amount: 420.1, date: '2026-03-12' },
-    { id: 'inv-102', vendor: 'Northwind LLC', amount: 89.99, date: '2026-03-18' },
-    { id: 'inv-103', vendor: 'Contoso', amount: 1200, date: '2026-04-01' },
-  ];
+  protected readonly loading = signal(true);
+  protected readonly loadError = signal<string | null>(null);
 
   constructor() {
     this.search$
       .pipe(
         debounceTime(200),
         distinctUntilChanged(),
-        switchMap((q) =>
-          this.invoiceApi
-            .listInvoices({ q: q || undefined, from: this.from() || undefined, to: this.to() || undefined })
-            .pipe(catchError(() => of(this.filterDemo(q)))),
-        ),
+        switchMap((q) => this.fetchList(q)),
         takeUntilDestroyed(),
       )
       .subscribe((list) => this.rows.set(list));
 
-    this.refresh();
-  }
+    this.listRefresh.onRefresh$.pipe(takeUntilDestroyed()).subscribe(() => {
+      this.fetchList(this.query()).subscribe((list) => this.rows.set(list));
+    });
 
-  private filterDemo(q: string): InvoiceSummary[] {
-    const needle = q.trim().toLowerCase();
-    if (!needle) {
-      return this.demo;
-    }
-    return this.demo.filter((r) => r.vendor.toLowerCase().includes(needle) || r.id.toLowerCase().includes(needle));
+    this.fetchList(this.query()).subscribe((list) => this.rows.set(list));
   }
 
   protected onQueryInput(value: string): void {
@@ -58,17 +57,50 @@ export class InvoiceHistoryPageComponent {
   }
 
   protected applyFilters(): void {
-    this.refresh();
+    this.fetchList(this.query()).subscribe((list) => this.rows.set(list));
   }
 
-  private refresh(): void {
-    this.invoiceApi
-      .listInvoices({
-        q: this.query() || undefined,
+  protected uploadedAtDisplay(value: string): string | null {
+    if (!value || value === '—') {
+      return null;
+    }
+    return value;
+  }
+
+  private fetchList(q: string) {
+    this.loading.set(true);
+    this.loadError.set(null);
+    return this.invoiceApi
+      .getInvoices({
+        q: q || undefined,
         from: this.from() || undefined,
         to: this.to() || undefined,
       })
-      .pipe(catchError(() => of(this.filterDemo(this.query()))))
-      .subscribe((list) => this.rows.set(list));
+      .pipe(
+        catchError((err: unknown) => {
+          this.loadError.set(this.errorMessage(err));
+          return of([] as InvoiceListItem[]);
+        }),
+        finalize(() => this.loading.set(false)),
+      );
+  }
+
+  private errorMessage(err: unknown): string {
+    if (err instanceof HttpErrorResponse) {
+      if (err.status === 0) {
+        return 'Cannot reach the server. Check that the API is running at your configured base URL.';
+      }
+      if (typeof err.error === 'string' && err.error) {
+        return err.error;
+      }
+      if (err.error && typeof err.error === 'object' && 'message' in err.error) {
+        const m = (err.error as { message: unknown }).message;
+        if (typeof m === 'string' && m) {
+          return m;
+        }
+      }
+      return `Failed to load invoices (${err.status}).`;
+    }
+    return 'Failed to load invoices.';
   }
 }

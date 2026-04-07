@@ -6,11 +6,15 @@ import { provideClientHydration, withEventReplay } from '@angular/platform-brows
 import { routes } from './app.routes';
 import { APP_CONFIG, defaultAppConfig } from './core/config/app-config';
 import { apiPrefixInterceptor } from './core/interceptors/api-prefix.interceptor';
+import { environment } from '../environments/environment';
 
 export const appConfig: ApplicationConfig = {
   providers: [
     provideBrowserGlobalErrorListeners(),
-    { provide: APP_CONFIG, useValue: defaultAppConfig },
+    {
+      provide: APP_CONFIG,
+      useValue: { ...defaultAppConfig, apiBaseUrl: environment.apiBaseUrl },
+    },
     provideHttpClient(withInterceptors([apiPrefixInterceptor])),
     provideRouter(routes),
     provideClientHydration(withEventReplay()),
