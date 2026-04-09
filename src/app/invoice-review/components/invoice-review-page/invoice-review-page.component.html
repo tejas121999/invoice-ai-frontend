@@ -1,54 +1,105 @@
-<div class="mx-auto max-w-2xl">
+<div class="w-full max-w-none">
   <h1 class="text-2xl font-semibold text-slate-900 dark:text-white">Review invoice</h1>
-  <p class="mt-1 text-slate-600 dark:text-slate-400">Invoice ID: {{ invoiceId() || '—' }}</p>
+  <p class="mt-1 text-slate-600 dark:text-slate-400">Invoice ID: {{ invoiceId() ?? '—' }}</p>
 
-  <form class="mt-6 space-y-4 rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900" [formGroup]="form">
-    <div>
-      <label class="block text-sm font-medium text-slate-700 dark:text-slate-300" for="vendor">Vendor</label>
-      <input
-        id="vendor"
-        type="text"
-        formControlName="vendor"
-        class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-slate-900 shadow-sm dark:border-slate-600 dark:bg-slate-950 dark:text-white"
-      />
+  @if (loading()) {
+  <div
+    class="mt-6 rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300">
+    Loading invoice extraction result...
+  </div>
+  } @else if (loadError()) {
+  <div
+    class="mt-6 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200">
+    {{ loadError() }}
+  </div>
+  } @else if (!result()) {
+  <div
+    class="mt-6 rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300">
+    No extraction result available.
+  </div>
+  } @else {
+  <div class="mt-6 grid grid-cols-3 gap-6">
+    <div class="col-span-2 space-y-6">
+      <section
+        class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <h2 class="text-lg font-semibold text-slate-900 dark:text-white">Invoice metadata</h2>
+        <div class="mt-3 grid grid-cols-2 gap-3 text-sm text-slate-700 dark:text-slate-200">
+          <div><span class="font-medium text-slate-900 dark:text-slate-100">Invoice ID:</span> {{ result()!.invoiceId }}
+          </div>
+          <div><span class="font-medium text-slate-900 dark:text-slate-100">File:</span> {{ result()!.fileName || '—' }}
+          </div>
+          <div><span class="font-medium text-slate-900 dark:text-slate-100">Status:</span> {{ result()!.status || '—' }}
+          </div>
+          <div><span class="font-medium text-slate-900 dark:text-slate-100">Uploaded:</span> {{ result()!.uploadedAt ||
+            '—' }}</div>
+          <div><span class="font-medium text-slate-900 dark:text-slate-100">Processed:</span> {{ result()!.processedAt
+            || '—' }}</div>
+          <div><span class="font-medium text-slate-900 dark:text-slate-100">Reviewed:</span> {{ result()!.isReviewed ?
+            'Yes' : 'No' }}</div>
+        </div>
+      </section>
+
+      <form class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900"
+        [formGroup]="form">
+        <h2 class="text-lg font-semibold text-slate-900 dark:text-white">Editable fields</h2>
+
+        <div class="mt-4 grid grid-cols-2 gap-4">
+          @for (key of
+          ['invoiceNumber','vendorName','invoiceDate','dueDate','subtotal','taxAmount','totalAmount','currency']; track
+          key) {
+          <div>
+            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300" [for]="key">
+              {{ fieldLabel(key) }}
+              @if (confidenceFor(key) !== null) {
+              <span class="text-xs text-slate-500">({{ confidenceFor(key) }}%)</span>
+              }
+            </label>
+            <input
+              class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-slate-900 shadow-sm dark:border-slate-600 dark:bg-slate-950 dark:text-white"
+              [id]="key"
+              [type]="key === 'invoiceDate' || key === 'dueDate' ? 'date' : (key === 'subtotal' || key === 'taxAmount' || key === 'totalAmount' ? 'number' : 'text')"
+              [formControlName]="key" />
+          </div>
+          }
+        </div>
+
+        @if (dynamicFieldKeys().length > 0) {
+        <div class="mt-6">
+          <h3 class="text-sm font-semibold text-slate-800 dark:text-slate-200">Additional extracted fields</h3>
+          <div class="mt-3 grid grid-cols-2 gap-4">
+            @for (key of dynamicFieldKeys(); track key) {
+            <div>
+              <label class="block text-sm font-medium text-slate-700 dark:text-slate-300" [for]="key">
+                {{ fieldLabel(key) }}
+                @if (confidenceFor(key) !== null) {
+                <span class="text-xs text-slate-500">({{ confidenceFor(key) }}%)</span>
+                }
+              </label>
+              <input
+                class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-slate-900 shadow-sm dark:border-slate-600 dark:bg-slate-950 dark:text-white"
+                [id]="key" type="text" [formControlName]="key" />
+            </div>
+            }
+          </div>
+        </div>
+        }
+
+        <div class="mt-6 flex gap-3">
+          <button type="button"
+            class="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow hover:bg-indigo-500"
+            (click)="saveDraft()">
+            Save
+          </button>
+        </div>
+      </form>
     </div>
-    <div>
-      <label class="block text-sm font-medium text-slate-700 dark:text-slate-300" for="invoiceNumber">Invoice #</label>
-      <input
-        id="invoiceNumber"
-        type="text"
-        formControlName="invoiceNumber"
-        class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-slate-900 shadow-sm dark:border-slate-600 dark:bg-slate-950 dark:text-white"
-      />
-    </div>
-    <div class="grid gap-4 sm:grid-cols-2">
-      <div>
-        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300" for="amount">Amount</label>
-        <input
-          id="amount"
-          type="number"
-          formControlName="amount"
-          class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-slate-900 shadow-sm dark:border-slate-600 dark:bg-slate-950 dark:text-white"
-        />
-      </div>
-      <div>
-        <label class="block text-sm font-medium text-slate-700 dark:text-slate-300" for="date">Date</label>
-        <input
-          id="date"
-          type="date"
-          formControlName="date"
-          class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-slate-900 shadow-sm dark:border-slate-600 dark:bg-slate-950 dark:text-white"
-        />
-      </div>
-    </div>
-    <div class="flex gap-3 pt-2">
-      <button
-        type="button"
-        class="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow hover:bg-indigo-500"
-        (click)="saveDraft()"
-      >
-        Save draft
-      </button>
-    </div>
-  </form>
+
+    <aside class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <h2 class="text-lg font-semibold text-slate-900 dark:text-white">Raw OCR text</h2>
+      <textarea
+        class="mt-3 h-[520px] w-full rounded-md border border-slate-300 bg-slate-50 p-3 text-xs text-slate-800 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
+        [value]="result()!.rawText || ''" readonly></textarea>
+    </aside>
+  </div>
+  }
 </div>

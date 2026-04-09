@@ -1,6 +1,7 @@
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable, map } from 'rxjs';
+import { APP_CONFIG } from '../core/config/app-config';
 
 /** Normalized upload response from POST /invoices/upload */
 export interface InvoiceUploadResult {
@@ -23,6 +24,32 @@ export interface InvoiceListItem {
   readonly uploadStatus: string;
   readonly processingStatus: string;
   readonly uploadedAt: string;
+}
+
+export interface InvoiceExtractedFields {
+  readonly invoiceNumber?: string;
+  readonly vendorName?: string;
+  readonly invoiceDate?: string;
+  readonly dueDate?: string;
+  readonly subtotal?: number | string;
+  readonly taxAmount?: number | string;
+  readonly totalAmount?: number | string;
+  readonly currency?: string;
+  readonly [key: string]: unknown;
+}
+
+export interface InvoiceResultResponse {
+  readonly invoiceId: number | string;
+  readonly status: string;
+  readonly fileName: string;
+  readonly filePath: string;
+  readonly uploadedAt: string;
+  readonly processedAt: string | null;
+  readonly rawText: string;
+  readonly fields: InvoiceExtractedFields;
+  readonly confidence?: Record<string, number | string>;
+  readonly reviewedFieldsJson?: string | Record<string, unknown> | null;
+  readonly isReviewed: boolean;
 }
 
 function asRecord(v: unknown): Record<string, unknown> {
@@ -60,15 +87,22 @@ function pickNum(obj: Record<string, unknown>, ...keys: string[]): number {
 })
 export class InvoiceApiService {
   private readonly http = inject(HttpClient);
+  private readonly appConfig = inject(APP_CONFIG);
+
+  private endpoint(path: string): string {
+    return `${this.appConfig.apiBaseUrl}/invoices${path}`;
+  }
 
   uploadInvoice(file: File): Observable<InvoiceUploadResult> {
     const body = new FormData();
     body.append('file', file);
-    return this.http.post<unknown>('/invoices/upload', body).pipe(map((raw) => this.normalizeUpload(raw)));
+    return this.http
+      .post<unknown>(this.endpoint('/upload'), body)
+      .pipe(map((raw) => this.normalizeUpload(raw)));
   }
 
   getInvoice(id: string): Observable<Record<string, unknown>> {
-    return this.http.get<Record<string, unknown>>(`/invoices/${id}`);
+    return this.http.get<Record<string, unknown>>(this.endpoint(`/${id}`));
   }
 
   /**
@@ -86,11 +120,21 @@ export class InvoiceApiService {
       params = params.set('to', filters.to);
     }
     const options = params.keys().length ? { params } : {};
-    return this.http.get<unknown>('/invoices', options).pipe(
+    return this.http.get<unknown>(this.endpoint(''), options).pipe(
       map((body) => this.extractRows(body)),
       map((rows) => rows.map((r) => this.normalizeListItem(asRecord(r)))),
       map((rows) => this.applyClientFilters(rows, filters)),
     );
+  }
+
+  getInvoiceResult(id: string): Observable<InvoiceResultResponse> {
+    return this.http
+      .get<unknown>(this.endpoint(`/${encodeURIComponent(id)}/result`))
+      .pipe(map((raw) => this.normalizeInvoiceResult(raw)));
+  }
+
+  processInvoice(id: string): Observable<unknown> {
+    return this.http.post<unknown>(this.endpoint(`/${encodeURIComponent(id)}/process`), {});
   }
 
   private normalizeUpload(raw: unknown): InvoiceUploadResult {
@@ -111,6 +155,64 @@ export class InvoiceApiService {
     };
   }
 
+  private normalizeInvoiceResult(raw: unknown): InvoiceResultResponse {
+    const root = asRecord(raw);
+    const payload =
+      root['data'] !== undefined && typeof root['data'] === 'object' && !Array.isArray(root['data'])
+        ? asRecord(root['data'])
+        : root;
+
+    const fieldsRaw = payload['fields'];
+    const fields: InvoiceExtractedFields =
+      fieldsRaw && typeof fieldsRaw === 'object' && !Array.isArray(fieldsRaw)
+        ? (fieldsRaw as InvoiceExtractedFields)
+        : {};
+
+    const confRaw = payload['confidence'];
+    const confidence: Record<string, number | string> | undefined =
+      confRaw && typeof confRaw === 'object' && !Array.isArray(confRaw)
+        ? (confRaw as Record<string, number | string>)
+        : undefined;
+
+    const reviewedRaw =
+      payload['reviewedFieldsJson'] ?? payload['reviewed_fields_json'] ?? payload['reviewedFields'];
+    let reviewedFieldsJson: string | Record<string, unknown> | null = null;
+    if (typeof reviewedRaw === 'string') {
+      reviewedFieldsJson = reviewedRaw;
+    } else if (reviewedRaw && typeof reviewedRaw === 'object' && !Array.isArray(reviewedRaw)) {
+      reviewedFieldsJson = reviewedRaw as Record<string, unknown>;
+    }
+
+    const invoiceIdVal = payload['invoiceId'] ?? payload['invoice_id'] ?? payload['id'];
+    let invoiceId: number | string = '';
+    if (typeof invoiceIdVal === 'number' && !Number.isNaN(invoiceIdVal)) {
+      invoiceId = invoiceIdVal;
+    } else if (typeof invoiceIdVal === 'string' && invoiceIdVal !== '') {
+      invoiceId = invoiceIdVal;
+    } else {
+      const n = pickNum(payload, 'invoiceId', 'invoice_id', 'id');
+      invoiceId = n !== 0 ? n : '';
+    }
+
+    const processedAtRaw = payload['processedAt'] ?? payload['processed_at'];
+    const processedAt =
+      processedAtRaw === null || processedAtRaw === undefined ? null : String(processedAtRaw);
+
+    return {
+      invoiceId,
+      status: pickStr(payload, 'status', 'processingStatus', 'processing_status') || '—',
+      fileName: pickStr(payload, 'fileName', 'file_name') || '—',
+      filePath: pickStr(payload, 'filePath', 'file_path') || '—',
+      uploadedAt: pickStr(payload, 'uploadedAt', 'uploaded_at', 'createdAt', 'created_at') || '—',
+      processedAt,
+      rawText: pickStr(payload, 'rawText', 'raw_text', 'ocrText', 'ocr_text') || '',
+      fields,
+      confidence,
+      reviewedFieldsJson,
+      isReviewed: Boolean(payload['isReviewed'] ?? payload['is_reviewed'] ?? false),
+    };
+  }
+
   private extractRows(body: unknown): unknown[] {
     if (Array.isArray(body)) {
       return body;
@@ -118,6 +220,15 @@ export class InvoiceApiService {
     const o = asRecord(body);
     if (Array.isArray(o['data'])) {
       return o['data'];
+    }
+    const dataObj = o['data'];
+    if (dataObj && typeof dataObj === 'object' && !Array.isArray(dataObj)) {
+      const inner = asRecord(dataObj);
+      for (const key of ['invoices', 'items', 'rows', 'results'] as const) {
+        if (Array.isArray(inner[key])) {
+          return inner[key];
+        }
+      }
     }
     if (Array.isArray(o['invoices'])) {
       return o['invoices'];
